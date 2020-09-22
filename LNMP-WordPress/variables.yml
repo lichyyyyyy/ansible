@@ -1,0 +1,5 @@
+client_max_body_size: 100m
+resource_path: /usr/share/nginx
+website_root_path: /usr/share/nginx/html
+wordpress_dbadmin_password: Philips1
+initial_pw: Philips1

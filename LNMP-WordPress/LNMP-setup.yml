@@ -1,0 +1,125 @@
+---
+# ref: https://help.aliyun.com/document_detail/97251.html
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    # setup environment
+    - name: Stop and disable firewalld service
+      service:
+        name: firewalld
+        state: stopped
+        enabled: no
+    
+    - name: Disable selinux at next reboot
+      selinux:
+        state: disabled
+    
+    - name: Set selinux in permissive mode until the machine is rebooted
+      shell: setenforce 0
+      ignore_errors: true
+      changed_when: false
+
+    # install nginx
+    - name: Add Nginx repo
+      yum_repository:
+        name: nginx
+        description: nginx stable repo
+        baseurl: http://nginx.org/packages/centos/$releasever/$basearch
+        enabled: 1
+        gpgcheck: 1
+        gpgkey: https://nginx.org/keys/nginx_signing.key
+
+    - name: Install Nginx
+      package:
+        name: nginx
+        state: present
+    
+    # install mysql server
+    - name: Check mysql-community-server is installed
+      shell: rpm -q mysql-community-server
+      register: rpm_check
+
+    - name: Add mysql repo and install mysql-community-server
+      shell: |
+        yum localinstall -y https://dev.mysql.com/get/mysql80-community-release-el7-1.noarch.rpm
+        yum --disablerepo=mysql57-community --enablerepo=mysql80-community install -y mysql-community-server
+      when: rpm_check.rc == 1
+    
+    - name: Start and enable mysqld
+      service:
+        name: mysqld
+        state: started
+        enabled: yes
+    
+    # install php
+    - name: Install yum-config-manager
+      yum:
+        name: yum-utils
+        state: present
+
+    - name: Install and enable EPEL and Remi
+      shell: |
+        yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+        yum install http://rpms.remirepo.net/enterprise/remi-release-7.rpm
+      tags:
+        - pass
+
+    - name: Install PHP
+      shell: yum install php php-mcrypt php-cli php-gd php-curl php-mysql php-ldap php-zip php-fileinfo php-fpm  
+      tags:
+        - pass
+    
+    # Configure Nginx
+    - name: Backup Nginx configuration file
+      shell: mv default.conf default.conf.bak
+      args:
+        chdir: /etc/nginx/conf.d
+    
+    - name: Copy the site file
+      template:
+        src: default.conf.j2
+        dest: /etc/nginx/conf.d/default.conf
+        owner: root
+        group: root
+        mode: 0644
+    
+    - name: Make sure all directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ resource_path }}"
+        - "{{ website_root_path }}"
+    
+    - name: Start Nginx service
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+      
+    # configure mysql (mysql_secure_installation)
+    - name: Register initial password for root
+      shell: grep 'temporary password' /var/log/mysqld.log
+      register: _initial_password
+    
+    - name: Get initial password for root
+      set_fact: 
+        initial_pw: "{{ _initial_password.stdout | regex_replace('.*\\:\\s', '') }}"
+
+    - name: Print initial password
+      debug:
+        msg: "Password for root: {{ initial_pw }}"
+    
+    # configure PHP
+    - name: Display PHP information (only for test)
+      copy:
+        content: "<?php echo phpinfo(); ?>"
+        dest: "{{ website_root_path }}/phpinfo.php"
+    
+    - name: Start and enable PHP-FPM
+      service:
+        name: php-fpm
+        state: started
+        enabled: yes
+
+          

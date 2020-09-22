@@ -1,0 +1,28 @@
+server {
+    listen 80;
+    server_name localhost;
+    root {{ website_root_path }};
+
+    client_max_body_size {{ client_max_body_size }};  
+
+    location /media/ {
+        add_header Content-Encoding gzip;
+        root {{ resource_path }}/data/;  
+    }
+
+    location /static/ {
+        root {{ resource_path }}/data/; 
+    }
+
+    location / {
+        index index.php index.html index.htm;
+    }
+    
+    location ~ .php$ {
+        root {{ website_root_path }};  
+        fastcgi_pass 127.0.0.1:9000;  
+        fastcgi_index index.php;
+        fastcgi_param  SCRIPT_FILENAME  $document_root$fastcgi_script_name;
+        include fastcgi_params;   
+    }               
+}

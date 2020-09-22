@@ -1,0 +1,90 @@
+---
+# ref: https://help.aliyun.com/document_detail/151691.html 
+# python iterpreter: python3
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    # Configure Nginx
+    - name: Backup Nginx configuration file
+      shell: mv default.conf default.conf.bak
+      args:
+        chdir: /etc/nginx/conf.d
+
+    - name: Copy the site file
+      template:
+        src: wordpress.conf.j2
+        dest: /etc/nginx/conf.d/default.conf
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Install PyMySQL
+      pip:
+        name: PyMySQL
+        state: present
+
+    - name: Add wordpress database
+      mysql_db:
+        name: wordpress
+        state: present        
+        login_user: root
+        login_password: "{{ initial_pw }}"
+    
+    - name: Create wordpress database administor
+      mysql_user:
+        name: wp_admin
+        password: "{{ wordpress_dbadmin_password }}"
+        priv: "wordpress.*:ALL"
+        login_user: root
+        login_password: "{{ initial_pw }}"
+        state: present
+    
+    - name: Download wordpress
+      shell: |
+        mkdir wordpress 
+        wget http://wordpress.org/latest.tar.gz
+        tar -xzvf latest.tar.gz
+      args:
+        chdir: /etc 
+      tags:
+        - skip
+   
+    - name: Copy configuration file
+      shell: cp /etc/wordpress/wp-config-sample.php /etc/wordpress/wp-config.php    
+
+    - name: Move wordpress to site root path
+      shell: cp -r /etc/wordpress/ {{ website_root_path }}
+
+    - name: Modify DB_NAME for wordpress database
+      lineinfile:
+        path: "{{ website_root_path }}/wordpress/wp-config.php"
+        regexp: "DB_NAME"
+        line: "define('DB_NAME', 'wordpress');"
+        state: present
+
+    - name: Modify DB_USER for wordpress database
+      lineinfile:
+        path: "{{ website_root_path }}/wordpress/wp-config.php"
+        regexp: "DB_USER"
+        line: "define('DB_USER', 'wp_admin');"
+        state: present
+
+    - name: Modify DB_PASSWORD for wordpress database
+      lineinfile:
+        path: "{{ website_root_path }}/wordpress/wp-config.php"
+        regexp: "DB_PASSWORD"
+        line: "define('DB_PASSWORD', '{{ wordpress_dbadmin_password }}');"
+        state: present
+
+    - name: Modify DB_NAME for wordpress database
+      lineinfile:
+        path: "{{ website_root_path }}/wordpress/wp-config.php" 
+        regexp: "DB_HOST"
+        line: "define('DB_HOST', 'localhost');"
+        state: present
+
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted
+        enabled: yes
